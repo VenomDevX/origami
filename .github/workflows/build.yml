@@ -41,8 +41,8 @@ jobs:
     outputs:
       matrix: ${{ steps.m.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22 }
       - name: Validate inputs
         run: |
@@ -64,15 +64,15 @@ jobs:
     defaults:
       run: { shell: bash }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22 }
       - if: contains(fromJSON('["windows","macos","linux"]'), matrix.target)
         uses: dtolnay/rust-toolchain@stable
       - if: matrix.target == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libdbus-1-dev libxdo-dev libssl-dev build-essential file
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libdbus-1-dev libxdo-dev libssl-dev build-essential file
       - if: matrix.target == 'android'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: 21 }
       - name: Build
         run: node scripts/build.mjs --target "${{ matrix.target }}" --url "$URL" --name "$NAME" --icon "$ICON" --app-id "$APP_ID" --app-version "$VERSION" --color "$COLOR" --release "$RELEASE"
