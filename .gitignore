@@ -5,6 +5,3 @@ out
 !.env.example
 next-env.d.ts
 .vercel
-
-.vercel
-.env*
