@@ -1,0 +1,99 @@
+name: build
+run-name: ${{ inputs.job_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      url: { description: Website URL (https), required: true }
+      name: { description: App name, required: true }
+      targets: { description: 'Comma list: android,ios,windows,macos,linux', required: true }
+      job_id: { description: Job id (release tag), required: true }
+      icon: { description: Icon URL (1024x1024 PNG recommended), required: false, default: '' }
+      app_id: { description: App ID / bundle ID (com.company.app), required: false, default: '' }
+      version: { description: Version (1.0.0), required: false, default: '' }
+      color: { description: Background / splash color (#ffffff), required: false, default: '' }
+      release:
+        description: none = test builds, sign = signed builds, store = signed + upload to Play / App Store
+        type: choice
+        options: [none, sign, store]
+        default: none
+
+permissions:
+  contents: write
+
+# Inputs reach scripts only through env vars, never ${{ }} inside run:, to avoid script injection.
+env:
+  URL: ${{ inputs.url }}
+  NAME: ${{ inputs.name }}
+  ICON: ${{ inputs.icon }}
+  TARGETS: ${{ inputs.targets }}
+  APP_ID: ${{ inputs.app_id }}
+  VERSION: ${{ inputs.version }}
+  COLOR: ${{ inputs.color }}
+  RELEASE: ${{ inputs.release }}
+  JOB: ${{ inputs.job_id }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Validate inputs
+        run: |
+          node -e "import('./scripts/validate.mjs').then(m => { const e = m.validate({ url: process.env.URL, name: process.env.NAME, icon: process.env.ICON, targets: process.env.TARGETS.split(','), appId: process.env.APP_ID, version: process.env.VERSION, color: process.env.COLOR, release: process.env.RELEASE }); if (e) { console.error(e); process.exit(1) } })"
+      - id: m
+        run: |
+          echo "matrix=$(jq -Rc 'split(",") | map({target: ., os: {android: "ubuntu-latest", linux: "ubuntu-24.04", windows: "windows-latest", macos: "macos-latest", ios: "macos-latest"}[.]})' <<< "$TARGETS")" >> "$GITHUB_OUTPUT"
+      - run: gh release create "$JOB" --repo "$GITHUB_REPOSITORY" --title "$NAME $VERSION" --notes "Built from $URL" --prerelease
+
+  build:
+    needs: plan
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    defaults:
+      run: { shell: bash }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - if: contains(fromJSON('["windows","macos","linux"]'), matrix.target)
+        uses: dtolnay/rust-toolchain@stable
+      - if: matrix.target == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libdbus-1-dev libxdo-dev libssl-dev build-essential file
+      - if: matrix.target == 'android'
+        uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Build
+        run: node scripts/build.mjs --target "${{ matrix.target }}" --url "$URL" --name "$NAME" --icon "$ICON" --app-id "$APP_ID" --app-version "$VERSION" --color "$COLOR" --release "$RELEASE"
+        env:
+          # Only read when release != none. Set them in Settings → Secrets → Actions of YOUR repo.
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      - name: Upload to Google Play (internal track, draft)
+        if: matrix.target == 'android' && inputs.release == 'store'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ inputs.app_id }}
+          releaseFiles: out/*.aab
+          track: internal
+          status: draft
+      - name: Attach files to release
+        run: if compgen -G "out/*" > /dev/null; then gh release upload "$JOB" out/* --repo "$GITHUB_REPOSITORY" --clobber; fi

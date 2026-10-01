@@ -1,0 +1,28 @@
+{
+  "name": "origami-app",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fold any website into native apps for Android, iOS, Windows, macOS and Linux.",
+  "type": "module",
+  "bin": {
+    "origami": "bin/origami.mjs"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node scripts/validate.test.mjs"
+  },
+  "dependencies": {
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}
